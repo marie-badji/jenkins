@@ -1,5 +1,4 @@
 pipeline {
-    // Chaque stage choisit son propre environnement
     agent none
 
     stages {
@@ -61,31 +60,14 @@ pipeline {
         }
 
         // ─────────────────────────────────────────
-        // STAGE 4 — Deploy (avec confirmation manuelle)
+        // STAGE 4 — Deploy (simulé, pas de serveur)
         // ─────────────────────────────────────────
-        stage('Deploy on Remote Server') {
+        stage('Deploy') {
             agent any
             steps {
-                script {
-                    // Demande de confirmation avant de déployer
-                    def userInput = input(
-                        message: 'Voulez-vous déployer sur le serveur distant ?',
-                        ok: 'Déployer'
-                    )
-
-                    if (userInput != null) {
-                        // /idrsa doit être montée comme un volume dans Jenkins
-                        // La clé publique doit être dans ~/.ssh/authorized_keys du serveur distant
-                        sh """
-                            ssh -i /idrsa -o StrictHostKeyChecking=no user@remote.server.com '
-                            docker pull $DOCKER_HUB_USERNAME/todo-front:v$BUILD_NUMBER &&
-                            docker stop todo-front || true &&
-                            docker rm todo-front || true &&
-                            docker run -d --name todo-front -p 80:80 $DOCKER_HUB_USERNAME/todo-front:v$BUILD_NUMBER
-                            '
-                        """
-                    }
-                }
+                echo "Image docker $DOCKER_HUB_USERNAME/todo-front:v$BUILD_NUMBER pushee sur Docker Hub avec succes !"
+                echo "Pour deployer sur un serveur distant, configurer une cle SSH et un VPS."
+                echo "Pipeline termine avec succes !"
             }
         }
 
