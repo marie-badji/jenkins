@@ -52,22 +52,28 @@ pipeline {
                     passwordVariable: 'DOCKER_HUB_PASSWORD',
                     usernameVariable: 'DOCKER_HUB_USERNAME'
                 )]) {
-                    sh "docker login -u $DOCKER_HUB_USERNAME -p $DOCKER_HUB_PASSWORD"
-                    sh "docker build -t $DOCKER_HUB_USERNAME/todo-front:v$BUILD_NUMBER ."
-                    sh "docker push $DOCKER_HUB_USERNAME/todo-front:v$BUILD_NUMBER"
+                    sh "docker login -u ${DOCKER_HUB_USERNAME} -p ${DOCKER_HUB_PASSWORD}"
+                    sh "docker build -t ${DOCKER_HUB_USERNAME}/todo-front:v${BUILD_NUMBER} ."
+                    sh "docker push ${DOCKER_HUB_USERNAME}/todo-front:v${BUILD_NUMBER}"
                 }
             }
         }
 
         // ─────────────────────────────────────────
-        // STAGE 4 — Deploy (simulé, pas de serveur)
+        // STAGE 4 — Deploy (simulé)
         // ─────────────────────────────────────────
         stage('Deploy') {
             agent any
             steps {
-                echo "Image docker $DOCKER_HUB_USERNAME/todo-front:v$BUILD_NUMBER pushee sur Docker Hub avec succes !"
-                echo "Pour deployer sur un serveur distant, configurer une cle SSH et un VPS."
-                echo "Pipeline termine avec succes !"
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub_credentials',
+                    passwordVariable: 'DOCKER_HUB_PASSWORD',
+                    usernameVariable: 'DOCKER_HUB_USERNAME'
+                )]) {
+                    echo "Image ${DOCKER_HUB_USERNAME}/todo-front:v${BUILD_NUMBER} pushee sur Docker Hub avec succes !"
+                    echo "Pour deployer sur un serveur distant, configurer une cle SSH et un VPS."
+                    echo "Pipeline termine avec succes !"
+                }
             }
         }
 
