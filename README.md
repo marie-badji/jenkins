@@ -1,6 +1,6 @@
-# todo-front — Pipeline CI/CD avec GitLab
+# todo-front — Pipeline CI/CD avec Jenkins
 
-> Application React de gestion de tâches déployée via une pipeline CI/CD complète sur GitLab.
+> Application React de gestion de tâches déployée via une pipeline CI/CD complète avec Jenkins et Docker.
 
 ---
 
@@ -11,7 +11,7 @@
 - [Structure du projet](#structure-du-projet)
 - [Étapes de mise en place](#étapes-de-mise-en-place)
 - [Pipeline CI/CD](#pipeline-cicd)
-- [Variables d'environnement](#variables-denvironnement)
+- [Différence avec GitLab CI et GitHub Actions](#différence-avec-gitlab-ci-et-github-actions)
 - [Lancer le projet en local](#lancer-le-projet-en-local)
 - [Auteur](#auteur)
 
@@ -19,9 +19,9 @@
 
 ## Présentation du projet
 
-Ce projet est une application **React** de gestion de tâches (Todo App). Il a été conçu dans le cadre d'un TP DevOps pour mettre en place une **pipeline CI/CD complète** avec GitLab CI.
+Ce projet est une application **React** de gestion de tâches (Todo App). Il a été conçu dans le cadre d'un TP DevOps pour mettre en place une **pipeline CI/CD complète** avec **Jenkins**.
 
-L'objectif principal est la mise en place de l'automatisation du build, des tests et du déploiement via **GitLab CI/CD** et **Docker Hub**.
+Jenkins est installé via Docker et orchestre automatiquement le build, les tests et le push de l'image Docker sur Docker Hub à chaque push sur GitHub.
 
 ---
 
@@ -31,10 +31,11 @@ L'objectif principal est la mise en place de l'automatisation du build, des test
 |-------------|------|
 | **React** | Framework front-end |
 | **npm** | Gestionnaire de paquets |
-| **GitLab CI/CD** | Pipeline d'intégration et de déploiement continus |
-| **Docker** | Conteneurisation de l'application |
+| **Jenkins** | Serveur CI/CD auto-hébergé |
+| **Docker** | Conteneurisation de Jenkins et de l'application |
 | **Docker Hub** | Registry pour stocker l'image Docker |
 | **Nginx** | Serveur web pour servir l'application en production |
+| **GitHub** | Hébergement du code source |
 
 ---
 
@@ -42,84 +43,170 @@ L'objectif principal est la mise en place de l'automatisation du build, des test
 
 ```
 todo-front/
-├── .gitlab-ci.yml      # Configuration de la pipeline CI/CD
-├── Dockerfile          # Image Docker multi-stage (build + serve)
-├── nginx.conf          # Configuration du serveur Nginx
-├── public/             # Fichiers statiques publics
-├── src/                # Code source React
+├── .github/
+├── Jenkinsfile          # Configuration de la pipeline Jenkins
+├── Dockerfile           # Image Docker multi-stage (build + serve)
+├── .dockerignore        # Fichiers exclus du build Docker
+├── nginx.conf           # Configuration du serveur Nginx
+├── public/              # Fichiers statiques publics
+├── src/                 # Code source React
 │   ├── App.js
 │   ├── App.test.js
 │   └── index.js
-├── package.json        # Dépendances npm
-└── README.md           # Documentation du projet
+├── package.json         # Dépendances npm
+└── README.md            # Documentation du projet
 ```
+
+---
+
+## Étapes de mise en place
+
+### Étape 1 — Installer Jenkins avec Docker
+
+Jenkins est lancé dans un conteneur Docker avec accès au socket Docker de la machine hôte.
+
+```bash
+docker run -d --name jenkins \
+  -p 8080:8080 \
+  -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  jenkins/jenkins:lts
+```
+
+![Installation de Jenkins via Docker](captures/jenkins1.png)
+
+---
+
+### Étape 2 — Accéder à Jenkins
+
+Une fois Jenkins démarré, l'interface est accessible sur `http://localhost:8080`.
+
+![Page d'accueil Jenkins](captures/jenkins2.png)
+
+---
+
+### Étape 3 — Pusher le projet sur GitHub
+
+Initialisation du repo Git et push du projet avec le `Jenkinsfile` à la racine.
+
+```bash
+git remote add origin https://github.com/marie-badji/jenkins.git
+git branch -M main
+git push -u origin main
+```
+
+![Push sur GitHub](captures/repo_git.png)
+
+---
 
 ## Pipeline CI/CD
 
-La pipeline est définie dans le fichier `.gitlab-ci.yml` et se compose de **3 stages**.
+La pipeline est définie dans le `Jenkinsfile` et se compose de **4 stages**.
 
 ```
-push → [build] → [test] → [deploy ▶ manuel]
+push → [Build React] → [Unit Test] → [Push Docker Hub] → [Deploy]
 ```
 
-### Stage 1 — Build
+### Stage 1 — Build React
+- Utilise l'image Docker `node:18-alpine`
 - Installe les dépendances avec `npm install`
-- Compile l'application React avec `npm run build`
-- Sauvegarde le dossier `artifact/` pour les stages suivants
+- Compile l'application avec `npm run build`
+- Sauvegarde les fichiers dans `staging/`
 
-### Stage 2 — Test
-- Exécute les tests unitaires avec `npm test`
-- Configuré en `allow_failure: true` : ne bloque pas le pipeline
-- Timeout fixé à **15 minutes**
+### Stage 2 — Unit Test
+- Utilise l'image Docker `node:18-alpine`
+- Exécute les tests avec `npm test`
+- Résultat : `1 passed, 1 total`
 
-### Stage 3 — Deploy (manuel)
-- Build une image Docker via le `Dockerfile`
-- Se connecte à **Docker Hub** avec les variables sécurisées
-- Pousse l'image : `DOCKER_HUB_USER/todo-front:latest`
-- Déclenchement **manuel** via le bouton ▶️ dans GitLab
+### Stage 3 — Push to Docker Hub
+- Utilise l'image Docker `docker:25.0.3`
+- Se connecte à Docker Hub via `dockerhub_credentials`
+- Build l'image : `mariebadji/todo-front:vN` *(N = numéro de build)*
+- Push l'image sur Docker Hub
 
-### Fichier `.gitlab-ci.yml`
+### Stage 4 — Deploy (simulé)
+- Affiche un message de confirmation
+- Le déploiement réel nécessite un serveur distant avec SSH
 
-```yaml
-stages:
-  - build
-  - test
-  - deploy
+### Fichier `Jenkinsfile`
 
-image: node:18-alpine
+```groovy
+pipeline {
+    agent none
 
-build job:
-  stage: build
-  cache:
-    paths:
-      - node_modules/
-  script:
-    - npm install --force
-    - npm run build
-    - mkdir -p artifact
-    - mv build/* artifact/
-  artifacts:
-    paths:
-      - artifact/
+    stages {
+        stage('Build React') {
+            agent {
+                docker {
+                    image 'node:18-alpine'
+                    args '-u root'
+                }
+            }
+            steps {
+                sh "npm install --force"
+                sh "npm run build"
+                sh "mkdir -p staging && cp -r build/* staging/"
+            }
+        }
 
-unit test job:
-  stage: test
-  timeout: 15m
-  script:
-    - npm install --force
-    - npm test -- --watchAll=false --passWithNoTests
-  allow_failure: true
+        stage('Unit Test') {
+            agent {
+                docker {
+                    image 'node:18-alpine'
+                    args '-u root'
+                }
+            }
+            steps {
+                sh "npm install --force"
+                sh "npm test -- --watchAll=false --passWithNoTests"
+            }
+        }
 
-deploy job:
-  stage: deploy
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - docker build -t $DOCKER_HUB_USER/todo-front:latest .
-    - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_TOKEN
-    - docker push $DOCKER_HUB_USER/todo-front:latest
-  when: manual
+        stage('Push to Docker Hub') {
+            agent {
+                docker {
+                    image 'docker:25.0.3'
+                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
+                }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub_credentials',
+                    passwordVariable: 'DOCKER_HUB_PASSWORD',
+                    usernameVariable: 'DOCKER_HUB_USERNAME'
+                )]) {
+                    sh "docker login -u ${DOCKER_HUB_USERNAME} -p ${DOCKER_HUB_PASSWORD}"
+                    sh "docker build -t ${DOCKER_HUB_USERNAME}/todo-front:v${BUILD_NUMBER} ."
+                    sh "docker push ${DOCKER_HUB_USERNAME}/todo-front:v${BUILD_NUMBER}"
+                }
+            }
+        }
+
+        stage('Deploy') {
+            agent any
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub_credentials',
+                    passwordVariable: 'DOCKER_HUB_PASSWORD',
+                    usernameVariable: 'DOCKER_HUB_USERNAME'
+                )]) {
+                    echo "Image ${DOCKER_HUB_USERNAME}/todo-front:v${BUILD_NUMBER} pushee sur Docker Hub !"
+                    echo "Pipeline termine avec succes !"
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline build successfully"
+        }
+        failure {
+            echo "Pipeline failed"
+        }
+    }
+}
 ```
 
 ---
@@ -144,66 +231,61 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
-### Créer un token Docker Hub
 
-Avant de configurer GitLab, il faut créer un token d'accès sur **Docker Hub** avec les permissions **Read & Write** pour permettre à GitLab de pusher les images.
+### Configurer les credentials Docker Hub
 
-![Création du token Docker Hub](captures/creation_du_docker_token.png)
+Dans **Manage Jenkins → Credentials → Global → Add Credentials** :
 
+- **Kind** : `Username with password`
+- **Username** : `mariebadji`
+- **Password** : token Docker Hub
+- **ID** : `dockerhub_credentials`
 
----
-## Variables d'environnement
-
-| Variable | Description | Visibilité |
-|----------|-------------|------------|
-| `DOCKER_HUB_USER` | Pseudo Docker Hub | Masked |
-| `DOCKER_HUB_TOKEN` | Token d'accès Docker Hub (Read & Write) | Masked and hidden |
+![Credentials Docker Hub configurés](captures/credentials.png)
 
 ---
 
-### Ajouter les variables CI/CD dans GitLab
+### Créer le pipeline Jenkins
 
-Les variables `DOCKER_HUB_USER` et `DOCKER_HUB_TOKEN` sont ajoutées dans **Settings → CI/CD → Variables** pour sécuriser les credentials Docker Hub.
+Dans **Nouveau Item** → nommer le projet `todo-front` → sélectionner **Pipeline**.
 
-**Variable DOCKER_HUB_USER :**
-
-![Variable DOCKER_HUB_USER](captures/variables1.png)
-
-**Variable DOCKER_HUB_TOKEN :**
-
-![Variable DOCKER_HUB_TOKEN](captures/variables2.png)
+![Création du pipeline](captures/Pipeline.png)
 
 ---
 
-### Initialiser le dépôt Git et faire le premier commit
+### Configurer le pipeline (Pipeline script from SCM)
 
-Initialisation du dépôt Git local, ajout de tous les fichiers et création du premier commit.
+Lier le pipeline au repo GitHub avec les paramètres suivants :
 
-![git init et git add](captures/git1.png)
+- **Definition** : `Pipeline script from SCM`
+- **SCM** : `Git`
+- **Repository URL** : `https://github.com/marie-badji/jenkins.git`
+- **Credentials** : `mariebadji/******`
 
----
+![Configuration pipeline partie 1](captures/config_p1.png)
 
-### Lier le dépôt GitLab et pusher
+- **Branch** : `*/main`
+- **Script Path** : `Jenkinsfile`
 
-Configuration du remote GitLab avec le token d'accès inclus dans l'URL, puis push du code sur la branche `main`.
-
-![git remote set-url et git push](captures/git2.png)
-
----
-
-### Étape 5 — Pipeline CI/CD exécutée avec succès
-
-La pipeline tourne automatiquement à chaque push. Les 3 stages sont visibles et passent au vert.
-
-![Vue des pipelines](captures/pipelines.png)
+![Configuration pipeline partie 2](captures/config_p2.png)
 
 ---
 
-### Étape 6 — Détail des jobs
+### Pipeline exécutée avec succès
 
-Chaque job est exécuté dans l'ordre : `build job` → `unit test job` → `deploy job` (manuel).
+Tous les stages passent au vert en **3 minutes 12 secondes**.
 
-![Détail des jobs](captures/job.png)
+![Stages du pipeline](captures/stages.png)
+
+---
+
+### Résultat final
+
+Le pipeline termine avec le statut **SUCCESS**.
+
+![Pipeline succès dashboard](captures/p_succes.png)
+
+![Console output - Finished SUCCESS](captures/p_succes_final.png)
 
 ---
 
@@ -212,8 +294,8 @@ Chaque job est exécuté dans l'ordre : `build job` → `unit test job` → `dep
 
 ```bash
 # Cloner le projet
-git clone https://gitlab.com/mary_bdj/gitlab_ci_m2gl.git
-cd gitlab_ci_m2gl
+git clone https://github.com/marie-badji/jenkins.git
+cd jenkins
 
 # Installer les dépendances
 npm install
@@ -229,9 +311,17 @@ docker build -t todo-front .
 docker run -p 80:80 todo-front
 ```
 
+### Relancer Jenkins
+
+```bash
+docker start jenkins
+```
+
+Accessible sur `http://localhost:8080`.
+
 ---
 
 ## Auteur
 
 **Marie BADJI** — M2GL DevOps  
-Dépôt GitLab : [gitlab.com/mary_bdj/gitlab_ci_m2gl](https://gitlab.com/mary_bdj/gitlab_ci_m2gl)
+Dépôt GitHub : [github.com/marie-badji/jenkins](https://github.com/marie-badji/jenkins)
