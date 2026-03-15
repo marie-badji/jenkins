@@ -307,7 +307,7 @@ npm start
 ### Avec Docker
 
 ```bash
-docker build -t todo-front .
+docker build -t todo-front 
 docker run -p 80:80 todo-front
 ```
 
